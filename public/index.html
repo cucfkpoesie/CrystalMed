@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crystal Med</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+        #map {
+            height: 100vh;
+            width: 100vw;
+        }
+        .header {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #00ff00; /* Green theme */
+        }
+        .filters-btn, .community-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .community-btn {
+            right: 120px;
+        }
+        .join-btn {
+            position: absolute;
+            top: 60px;
+            left: 10px;
+            z-index: 1000;
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8);
+        }
+        .modal-content {
+            background-color: #111;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #00ff00;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 10px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close:hover,
+        .close:focus {
+            color: #fff;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .profile-info {
+            text-align: center;
+        }
+        .profile-info img {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px solid #00ff00;
+        }
+        .chat-messages {
+            height: 200px;
+            overflow-y: scroll;
+            background: #222;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .chat-input {
+            width: 100%;
+            padding: 10px;
+            background: #333;
+            color: #fff;
+            border: none;
+        }
+        .filter-options, .join-options {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-options label, .join-options label {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="header">
+        <h1>Crystal Med</h1>
+    </div>
+    <button class="filters-btn" onclick="openModal('filtersModal')">Filters</button>
+    <button class="community-btn" onclick="alert('Community tab coming soon!')">Community</button>
+    <button class="join-btn" onclick="joinMap()">Appear on Map</button>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('profileModal')">&times;</span>
+            <div class="profile-info">
+                <img id="profileImg" src="https://ineedmeth.com/wp-content/uploads/2025/07/logo.png" alt="Profile">
+                <h2 id="profileName"></h2>
+                <p id="profileType"></p>
+                <p id="profileDetails"></p>
+                <button onclick="openChat()">Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div id="chatModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('chatModal')">&times;</span>
+            <h2>Chat with <span id="chatName"></span></h2>
+            <div class="chat-messages" id="chatMessages"></div>
+            <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="sendMessage(event)">
+        </div>
+    </div>
+
+    <!-- Filters Modal -->
+    <div id="filtersModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('filtersModal')">&times;</span>
+            <h2>Filters</h2>
+            <div class="filter-options">
+                <label><input type="checkbox" id="showBuyers" checked onchange="applyFilters()"> Show Buyers</label>
+                <label><input type="checkbox" id="showSellers" checked onchange="applyFilters()"> Show Sellers</label>
+                <label>Price Range: <input type="number" id="minPrice" placeholder="Min" onchange="applyFilters()"> - <input type="number" id="maxPrice" placeholder="Max" onchange="applyFilters()"></label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Modal -->
+    <div id="joinModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('joinModal')">&times;</span>
+            <h2>Select Your Type</h2>
+            <div class="join-options">
+                <label><input type="radio" name="userType" value="Buyer"> Buyer</label>
+                <label><input type="radio" name="userType" value="Seller"> Seller</label>
+                <div id="sellerOptions" style="display:none;">
+                    <label>Delivers: <input type="checkbox" id="delivers" checked></label>
+                </div>
+                <button onclick="confirmJoin()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io(); // Connect to backend
+
+        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [];
+
+        socket.on('userId', (id) => {
+            userId = id;
+        });
+
+        socket.on('userUpdate', (updatedUsers) => {
+            users = updatedUsers.filter(u => u.id !== userId); // Exclude self
+            applyFilters();
+        });
+
+        socket.on('chatRequest', ({ from }) => {
+            alert(`Chat request from user ${from}`);
+        });
+
+        socket.on('chatMessage', ({ from, message }) => {
+            const msgDiv = document.createElement('div');
+            msgDiv.textContent = `${from}: ${message}`;
+            document.getElementById('chatMessages').appendChild(msgDiv);
+        });
+
+        // Initialize map with dark theme and zoom control at bottom left
+        function initMap(lat = 37.7749, lng = -122.4194) {
+            map = L.map('map', { zoomControl: false }).setView([lat, lng], 13);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            }).addTo(map);
+            L.control.zoom({ position: 'bottomleft' }).addTo(map);
+            applyFilters(); // Use socket users, no mocks
+        }
+
+        // Add markers to map for other users
+        function addMarkers() {
+            clearMarkers();
+            const showBuyers = document.getElementById('showBuyers')?.checked ?? true;
+            const showSellers = document.getElementById('showSellers')?.checked ?? true;
+            const minPrice = parseFloat(document.getElementById('minPrice')?.value) || 0;
+            const maxPrice = parseFloat(document.getElementById('maxPrice')?.value) || Infinity;
+
+            users.forEach(user => {
+                if (currentLocation && calculateDistance(currentLocation.lat, currentLocation.lng, user.lat, user.lng) > 50) return; // Local filter: 50km radius
+
+                let marker;
+                if (user.type === 'Buyer' && showBuyers && user.price >= minPrice && user.price <= maxPrice) {
+                    marker = L.circleMarker([user.lat, user.lng], {
+                        radius: 10,
+                        fillColor: 'orange',
+                        color: 'orange',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(map);
+                } else if (user.type === 'Seller' && showSellers && user.price >= minPrice && user.price <= maxPrice) {
+                    const color = user.delivers ? 'green' : 'blue';
+                    const triangleHtml = `
+                        <div style="
+                            width: 0;
+                            height: 0;
+                            border-left: 12px solid transparent;
+                            border-right: 12px solid transparent;
+                            border-bottom: 24px solid ${color};
+                            transform: translate(-50%, -50%);
+                        "></div>
+                    `;
+                    const icon = L.divIcon({
+                        html: triangleHtml,
+                        className: '',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 24]
+                    });
+                    marker = L.marker([user.lat, user.lng], { icon: icon }).addTo(map);
+                }
+                if (marker) {
+                    marker.bindPopup(`<b>User ${user.id.slice(0,4)}</b><br>${user.type}`);
+                    marker.on('click', () => showProfile(user));
+                    markers.push(marker);
+                }
+            });
+        }
+
+        function clearMarkers() {
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+        }
+
+        function applyFilters() {
+            addMarkers();
+            if (selfUser) addSelfMarker();
+        }
+
+        // Haversine distance formula for local filtering
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Join map functionality
+        function joinMap() {
+            if (selfUser) {
+                alert('You are already on the map!');
+                return;
+            }
+            openModal('joinModal');
+        }
+
+        // Confirm join
+        function confirmJoin() {
+            const selectedType = document.querySelector('input[name="userType"]:checked');
+            if (!selectedType) {
+                alert('Please select a type!');
+                return;
+            }
+            const type = selectedType.value;
+            let delivers = false;
+            if (type === 'Seller') {
+                delivers = document.getElementById('delivers').checked;
+            }
+            const price = parseFloat(prompt('Enter your price:')) || 10;
+            closeModal('joinModal');
+            navigator.geolocation.getCurrentPosition(position => {
+                selfUser = {
+                    type: type,
+                    delivers: delivers,
+                    price: price,
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    img: 'https://via.placeholder.com/100?text=You',
+                    details: 'Your position',
+                    name: 'You'
+                };
+                socket.emit('join', selfUser);
+                addSelfMarker();
+                map.setView([selfUser.lat, selfUser.lng], 13);
+                watchId = navigator.geolocation.watchPosition(position => {
+                    selfUser.lat = position.coords.latitude;
+                    selfUser.lng = position.coords.longitude;
+                    socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
+                    addSelfMarker();
+                }, err => console.error(err), { enableHighAccuracy: true });
+            }, err => {
+                alert('Unable to get location.');
+            });
+        }
+
+        // Update self position
+        function updateSelfPosition(position) {
+            selfUser.lat = position.coords.latitude;
+            selfUser.lng = position.coords.longitude;
+            addSelfMarker();
+        }
+
+        // Add/update self marker
+        function addSelfMarker() {
+            if (selfMarker) map.removeLayer(selfMarker);
+            const showBuyers = document.getElementById('showBuyers')?.checked ?? true;
+            const showSellers = document.getElementById('showSellers')?.checked ?? true;
+            const minPrice = parseFloat(document.getElementById('minPrice')?.value) || 0;
+            const maxPrice = parseFloat(document.getElementById('maxPrice')?.value) || Infinity;
+            const shouldShow = (selfUser.type === 'Buyer' && showBuyers) || (selfUser.type === 'Seller' && showSellers);
+            if (!shouldShow || selfUser.price < minPrice || selfUser.price > maxPrice) return;
+
+            let marker;
+            if (selfUser.type === 'Buyer') {
+                marker = L.circleMarker([selfUser.lat, selfUser.lng], {
+                    radius: 10,
+                    fillColor: 'orange',
+                    color: 'orange',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+            } else {
+                const color = selfUser.delivers ? 'green' : 'blue';
+                const triangleHtml = `
+                    <div style="
+                        width: 0;
+                        height: 0;
+                        border-left: 12px solid transparent;
+                        border-right: 12px solid transparent;
+                        border-bottom: 24px solid ${color};
+                        transform: translate(-50%, -50%);
+                    "></div>
+                `;
+                const icon = L.divIcon({
+                    html: triangleHtml,
+                    className: '',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 24]
+                });
+                marker = L.marker([selfUser.lat, selfUser.lng], { icon: icon });
+            }
+            marker.addTo(map);
+            marker.bindPopup(`<b>${selfUser.name}</b><br>${selfUser.type}`);
+            marker.on('click', () => showProfile(selfUser));
+            selfMarker = marker;
+        }
+
+        // Show profile modal
+        function showProfile(user) {
+            document.getElementById('profileImg').src = user.img || 'https://ineedmeth.com/wp-content/uploads/2025/07/logo.png';
+            document.getElementById('profileName').textContent = user.name || `User ${user.id.slice(0,4)}`;
+            document.getElementById('profileType').textContent = user.type;
+            document.getElementById('profileDetails').textContent = user.details + (user.type === 'Seller' ? ` (Delivers: ${user.delivers ? 'Yes' : 'No'})` : '');
+            openModal('profileModal');
+            currentChatUser = user;
+        }
+
+        // Chat functionality
+        let currentChatUser;
+        function openChat() {
+            if (currentChatUser.id === userId) { // Use userId for self check
+                alert('You cannot chat with yourself!');
+                closeModal('profileModal');
+                return;
+            }
+            closeModal('profileModal');
+            document.getElementById('chatName').textContent = currentChatUser.name || `User ${currentChatUser.id.slice(0,4)}`;
+            document.getElementById('chatMessages').innerHTML = '';
+            openModal('chatModal');
+            socket.emit('startChat', currentChatUser.id);
+        }
+
+        function sendMessage(event) {
+            if (event.key === 'Enter') {
+                const input = document.getElementById('chatInput');
+                const message = input.value;
+                if (message) {
+                    const msgDiv = document.createElement('div');
+                    msgDiv.textContent = `You: ${message}`;
+                    document.getElementById('chatMessages').appendChild(msgDiv);
+                    input.value = '';
+                    socket.emit('chatMessage', { to: currentChatUser.id, message });
+                }
+            }
+        }
+
+        // Modal controls
+        function openModal(id) {
+            document.getElementById(id).style.display = 'block';
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        // Get user location and init
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(position => {
+                const { latitude, longitude } = position.coords;
+                currentLocation = { lat: latitude, lng: longitude };
+                initMap(latitude, longitude);
+            }, () => {
+                currentLocation = { lat: 37.7749, lng: -122.4194 };
+                initMap();
+            });
+        } else {
+            currentLocation = { lat: 37.7749, lng: -122.4194 };
+            initMap();
+        }
+
+        // Setup seller options visibility
+        document.querySelectorAll('input[name="userType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                document.getElementById('sellerOptions').style.display = radio.value === 'Seller' ? 'block' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>
