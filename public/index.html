@@ -238,7 +238,7 @@
     <script>
         const socket = io(); // Connect to backend
 
-        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], pendingMessages = {}, currentChatUser = null, activeChats = {};
+        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], chatHistories = {}, pendingMessages = {}, currentChatUser = null, activeChats = {};
 
         socket.on('userId', (id) => {
             userId = id;
@@ -261,6 +261,8 @@
         socket.on('chatMessage', ({ from, message }) => {
             const sender = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
             const msgText = `${sender.name}: ${message}`;
+            if (!chatHistories[from]) chatHistories[from] = [];
+            chatHistories[from].push(msgText);
             if (!activeChats[from]) {
                 activeChats[from] = sender;
                 addChatButton(sender);
@@ -517,6 +519,12 @@
             closeModal('profileModal');
             document.getElementById('chatName').textContent = currentChatUser.name;
             document.getElementById('chatMessages').innerHTML = '';
+            const history = chatHistories[currentChatUser.id] || [];
+            history.forEach(msg => {
+                const msgDiv = document.createElement('div');
+                msgDiv.textContent = msg;
+                document.getElementById('chatMessages').appendChild(msgDiv);
+            });
             if (pendingMessages[currentChatUser.id]) {
                 pendingMessages[currentChatUser.id].forEach(msg => {
                     const msgDiv = document.createElement('div');
@@ -534,8 +542,11 @@
                 const input = document.getElementById('chatInput');
                 const message = input.value;
                 if (message) {
+                    const msgText = `You: ${message}`;
+                    if (!chatHistories[currentChatUser.id]) chatHistories[currentChatUser.id] = [];
+                    chatHistories[currentChatUser.id].push(msgText);
                     const msgDiv = document.createElement('div');
-                    msgDiv.textContent = `You: ${message}`;
+                    msgDiv.textContent = msgText;
                     document.getElementById('chatMessages').appendChild(msgDiv);
                     input.value = '';
                     socket.emit('chatMessage', { to: currentChatUser.id, message });
@@ -567,7 +578,7 @@
             initMap();
         }
 
-        // Setup seller and buyer options visibility
+        // Setup seller options visibility
         document.querySelectorAll('input[name="userType"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 document.getElementById('sellerOptions').style.display = radio.value === 'Seller' ? 'block' : 'none';
