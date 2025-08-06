@@ -33,7 +33,7 @@
             font-size: 24px;
             color: #00ff00; /* Green theme */
         }
-        .filters-btn, .community-btn {
+        .filters-btn {
             position: absolute;
             top: 10px;
             right: 10px;
@@ -44,9 +44,6 @@
             padding: 10px;
             cursor: pointer;
             border-radius: 5px;
-        }
-        .community-btn {
-            right: 120px;
         }
         .join-btn {
             position: absolute;
@@ -142,6 +139,32 @@
             cursor: pointer;
             display: none;
         }
+        #chat-buttons {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .chat-button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 5px 10px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        #show-location-btn {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -150,7 +173,6 @@
         <h1>Crystal Med</h1>
     </div>
     <button class="filters-btn" onclick="openModal('filtersModal')">Filters</button>
-    <button class="community-btn" onclick="alert('Community tab coming soon!')">Community</button>
     <button class="join-btn" onclick="joinMap()">Appear on Map</button>
 
     <!-- Profile Modal -->
@@ -174,6 +196,7 @@
             <h2>Chat with <span id="chatName"></span></h2>
             <div class="chat-messages" id="chatMessages"></div>
             <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="sendMessage(event)">
+            <button id="show-location-btn" onclick="showChatUserLocation()">Show location</button>
         </div>
     </div>
 
@@ -202,8 +225,6 @@
                 <label><input type="radio" name="userType" value="Seller"> Seller</label>
                 <div id="sellerOptions" style="display:none;">
                     <label>Delivers: <input type="checkbox" id="delivers" checked></label>
-                </div>
-                <div id="priceOptions" style="display:none;">
                     <label>Price per 1g (optional): <input type="number" id="price" step="0.01" min="0"></label>
                 </div>
                 <button onclick="confirmJoin()">Confirm</button>
@@ -212,11 +233,12 @@
     </div>
 
     <div id="notification" onclick="handleNotificationClick()"></div>
+    <div id="chat-buttons"></div>
 
     <script>
         const socket = io(); // Connect to backend
 
-        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], pendingMessages = {}, currentChatUser = null;
+        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], pendingMessages = {}, currentChatUser = null, activeChats = {};
 
         socket.on('userId', (id) => {
             userId = id;
@@ -228,12 +250,21 @@
         });
 
         socket.on('chatRequest', ({ from }) => {
-            showNotification(`New chat from user ${from}`);
+            const sender = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
+            if (!activeChats[from]) {
+                activeChats[from] = sender;
+                addChatButton(sender);
+            }
+            showNotification(`New chat from ${sender.name}`);
         });
 
         socket.on('chatMessage', ({ from, message }) => {
-            const sender = users.find(u => u.id === from) || { name: `User ${from.slice(0,4)}` };
+            const sender = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
             const msgText = `${sender.name}: ${message}`;
+            if (!activeChats[from]) {
+                activeChats[from] = sender;
+                addChatButton(sender);
+            }
             if (currentChatUser && currentChatUser.id === from && document.getElementById('chatModal').style.display === 'block') {
                 const msgDiv = document.createElement('div');
                 msgDiv.textContent = msgText;
@@ -245,6 +276,18 @@
             }
         });
 
+        function addChatButton(user) {
+            const chatButtons = document.getElementById('chat-buttons');
+            const button = document.createElement('button');
+            button.className = 'chat-button';
+            button.textContent = `Chat with ${user.name}`;
+            button.onclick = () => {
+                currentChatUser = user;
+                openChat();
+            };
+            chatButtons.appendChild(button);
+        }
+
         function showNotification(text) {
             const notification = document.getElementById('notification');
             notification.textContent = text;
@@ -255,17 +298,16 @@
         function handleNotificationClick() {
             const notification = document.getElementById('notification');
             notification.style.display = 'none';
-            // Assume the last sender for simplicity; in production, track sender in notification data
             if (Object.keys(pendingMessages).length > 0) {
                 const from = Object.keys(pendingMessages)[0];
-                currentChatUser = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
+                currentChatUser = activeChats[from];
                 openChat();
-                pendingMessages[from].forEach(msg => {
-                    const msgDiv = document.createElement('div');
-                    msgDiv.textContent = msg;
-                    document.getElementById('chatMessages').appendChild(msgDiv);
-                });
-                delete pendingMessages[from];
+            }
+        }
+
+        function showChatUserLocation() {
+            if (currentChatUser && currentChatUser.lat && currentChatUser.lng) {
+                map.setView([currentChatUser.lat, currentChatUser.lng], 13);
             }
         }
 
@@ -374,10 +416,11 @@
             }
             const type = selectedType.value;
             let delivers = false;
+            let price = null;
             if (type === 'Seller') {
                 delivers = document.getElementById('delivers').checked;
+                price = parseFloat(document.getElementById('price').value) || null;
             }
-            const price = (type === 'Buyer') ? parseFloat(document.getElementById('price').value) || null : null;
             closeModal('joinModal');
             navigator.geolocation.getCurrentPosition(position => {
                 selfUser = {
@@ -528,7 +571,6 @@
         document.querySelectorAll('input[name="userType"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 document.getElementById('sellerOptions').style.display = radio.value === 'Seller' ? 'block' : 'none';
-                document.getElementById('priceOptions').style.display = radio.value === 'Buyer' ? 'block' : 'none';
             });
         });
     </script>
