@@ -459,36 +459,22 @@
             const shouldShow = (selfUser.type === 'Buyer' && showBuyers) || (selfUser.type === 'Seller' && showSellers);
             if (!shouldShow || (selfUser.price !== null && (selfUser.price < minPrice || selfUser.price > maxPrice))) return;
 
-            let marker;
-            if (selfUser.type === 'Buyer') {
-                marker = L.circleMarker([selfUser.lat, selfUser.lng], {
-                    radius: 10,
-                    fillColor: 'orange',
-                    color: 'orange',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                });
-            } else {
-                const color = selfUser.delivers ? 'green' : 'blue';
-                const triangleHtml = `
-                    <div style="
-                        width: 0;
-                        height: 0;
-                        border-left: 12px solid transparent;
-                        border-right: 12px solid transparent;
-                        border-bottom: 24px solid ${color};
-                        transform: translate(-50%, -50%);
-                    "></div>
-                `;
-                const icon = L.divIcon({
-                    html: triangleHtml,
-                    className: '',
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 24]
-                });
-                marker = L.marker([selfUser.lat, selfUser.lng], { icon: icon });
-            }
+            const color = selfUser.type === 'Buyer' ? 'yellow' : 'red';
+            const starHtml = `
+                <div style="
+                    font-size: 24px;
+                    color: ${color};
+                    text-shadow: 0 0 3px black;
+                    transform: translate(-50%, -50%);
+                ">★</div>
+            `;
+            const icon = L.divIcon({
+                html: starHtml,
+                className: '',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            const marker = L.marker([selfUser.lat, selfUser.lng], { icon: icon });
             marker.addTo(map);
             marker.bindPopup(`<b>${selfUser.name}</b><br>${selfUser.type}`);
             marker.bindTooltip(selfUser.name, { permanent: true, direction: 'bottom', offset: [0, 20] });
