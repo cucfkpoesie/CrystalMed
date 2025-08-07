@@ -189,7 +189,7 @@
     </style>
 </head>
 <body>
-    <div id="loading-message">Map is loading...</div>
+    <div id="loading-message">Locating…</div>
     <div id="map"></div>
     <div class="header">
         <h1>Crystal Med</h1>
@@ -314,10 +314,7 @@
                     socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
                     lastLocationUpdate = Date.now();
                 }
-            }, err => {
-                console.error('Location watch error:', err);
-                alert('Location update failed: ' + (err.message || 'Unknown error'));
-            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
             document.getElementById('end-session-btn').style.display = 'block';
             document.querySelector('.join-btn').style.display = 'none';
             localStorage.setItem('crystalMedJoinData', JSON.stringify({ type: selfUser.type, delivers: selfUser.delivers, price: selfUser.price, name: selfUser.name }));
@@ -499,6 +496,27 @@
             return R * c;
         }
 
+        // Geolocation error handler
+        function geoError(err) {
+            let message = 'Unable to get location.';
+            switch (err.code) {
+                case err.PERMISSION_DENIED:
+                    message += ' Please allow location access in your browser settings.';
+                    break;
+                case err.POSITION_UNAVAILABLE:
+                    message += ' Location information is unavailable. Please check your device settings.';
+                    break;
+                case err.TIMEOUT:
+                    message += ' The request to get user location timed out. Try in an area with better signal or allow more time.';
+                    break;
+                default:
+                    message += ' An unknown error occurred.';
+                    break;
+            }
+            console.error('Geolocation error:', err);
+            alert(message);
+        }
+
         // Join map functionality
         function joinMap() {
             if (selfUser) {
@@ -540,10 +558,7 @@
                 joinData.lng = position.coords.longitude;
                 console.log('Sending join with data:', joinData);
                 socket.emit('join', joinData);
-            }, err => {
-                console.error('Geolocation error:', err);
-                alert('Unable to get location: ' + (err.message || 'Unknown error') + '. Please allow location access.');
-            }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
         }
 
         // Add/update self marker
@@ -678,21 +693,16 @@
         }
 
         // Get user location and init
-        if (navigator.geolocation) {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            currentLocation = { lat: 37.7749, lng: -122.4194 };
+            initMap();
+        } else {
             navigator.geolocation.getCurrentPosition(position => {
                 const { latitude, longitude } = position.coords;
                 currentLocation = { lat: latitude, lng: longitude };
                 initMap(latitude, longitude);
-            }, (err) => {
-                console.error('Initial geolocation error:', err);
-                alert('Unable to get initial location: ' + (err.message || 'Unknown error') + '. Using default location.');
-                currentLocation = { lat: 37.7749, lng: -122.4194 };
-                initMap();
-            }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
-        } else {
-            alert('Geolocation not supported by your browser.');
-            currentLocation = { lat: 37.7749, lng: -122.4194 };
-            initMap();
+            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
         }
 
         // Setup seller options visibility
