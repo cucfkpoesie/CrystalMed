@@ -591,9 +591,6 @@
             });
             const marker = L.marker([selfUser.lat, selfUser.lng], { icon: icon });
             marker.addTo(map);
-            marker.bindPopup(`<b>${selfUser.name}</b><br>${selfUser.type}`);
-            marker.bindTooltip(selfUser.name, { permanent: true, direction: 'bottom', offset: [0, 20] });
-            marker.on('click', () => showProfile(selfUser));
             selfMarker = marker;
             console.log('Self marker added at', selfUser.lat, selfUser.lng);
         }
