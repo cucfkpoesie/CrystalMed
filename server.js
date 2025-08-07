@@ -48,6 +48,11 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('disconnectUser', () => {
+    delete activeUsers[userId];
+    io.emit('userUpdate', Object.values(activeUsers));
+  });
+
   socket.on('disconnect', () => {
     delete activeUsers[userId];
     io.emit('userUpdate', Object.values(activeUsers));
