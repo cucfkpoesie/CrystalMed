@@ -166,9 +166,22 @@
             border-radius: 5px;
             margin-top: 10px;
         }
+        #loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 20px;
+            color: #00ff00;
+        }
     </style>
 </head>
 <body>
+    <div id="loading-message">Map is loading...</div>
     <div id="map"></div>
     <div class="header">
         <h1>Crystal Med</h1>
@@ -322,6 +335,7 @@
             }).addTo(map);
             L.control.zoom({ position: 'bottomleft' }).addTo(map);
             applyFilters(); // Use socket users, no mocks
+            document.getElementById('loading-message').style.display = 'none'; // Hide loading message
         }
 
         // Add markers to map for other users
