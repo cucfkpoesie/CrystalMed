@@ -269,7 +269,7 @@
     <div id="chat-buttons"></div>
 
     <script>
-        const socket = io(); // Connect to backend
+        const socket = io();
 
         let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], chatHistories = {}, pendingMessages = {}, currentChatUser = null, activeChats = {}, joinData = null;
         let updateTimeout = null;
@@ -316,7 +316,7 @@
                 }
             }, err => {
                 console.error('Location watch error:', err);
-                alert('Location update failed: ' + err.message);
+                alert('Location update failed: ' + (err.message || 'Unknown error'));
             }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
             document.getElementById('end-session-btn').style.display = 'block';
             document.querySelector('.join-btn').style.display = 'none';
@@ -408,7 +408,6 @@
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             }).addTo(map);
             L.control.zoom({ position: 'bottomleft' }).addTo(map);
-            applyFilters(); // Use socket users, no mocks
             document.getElementById('loading-message').style.display = 'none'; // Hide loading message
             autoJoinIfStored();
         }
@@ -442,7 +441,7 @@
                 let marker;
                 if (user.type === 'Buyer' && showBuyers && (user.price === null || (user.price >= minPrice && user.price <= maxPrice))) {
                     marker = L.circleMarker([user.lat, user.lng], {
-                        radius: 10;
+                        radius: 10,
                         fillColor: 'orange',
                         color: 'orange',
                         weight: 1,
@@ -543,7 +542,7 @@
                 socket.emit('join', joinData);
             }, err => {
                 console.error('Geolocation error:', err);
-                alert('Unable to get location: ' + err.message + '. Please allow location access.');
+                alert('Unable to get location: ' + (err.message || 'Unknown error') + '. Please allow location access.');
             }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
         }
 
@@ -686,7 +685,7 @@
                 initMap(latitude, longitude);
             }, (err) => {
                 console.error('Initial geolocation error:', err);
-                alert('Unable to get initial location: ' + err.message + '. Using default location.');
+                alert('Unable to get initial location: ' + (err.message || 'Unknown error') + '. Using default location.');
                 currentLocation = { lat: 37.7749, lng: -122.4194 };
                 initMap();
             }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
