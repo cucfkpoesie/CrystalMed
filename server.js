@@ -15,9 +15,14 @@ io.on('connection', (socket) => {
   const userId = uuidv4();
   socket.emit('userId', userId); // Send temp ID to client
 
-  socket.on('join', (data) => { // Data: { type: 'Buyer/Seller', lat, lng, delivers?, price }
+  socket.on('join', (data) => { // Data: { type: 'Buyer/Seller', lat, lng, delivers?, price, name, img }
+    if (Object.values(activeUsers).some(u => u.name === data.name)) {
+      socket.emit('nameTaken');
+      return;
+    }
     activeUsers[userId] = { ...data, id: userId, socketId: socket.id };
     io.emit('userUpdate', Object.values(activeUsers)); // Broadcast all active users (clients filter locally)
+    socket.emit('joinSuccess');
   });
 
   socket.on('updateLocation', (location) => {
@@ -56,4 +61,4 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-server.listen(3000, () => console.log('Server running on port 3000'));
+server.listen(4000, () => console.log('Server running on port 4000'));
