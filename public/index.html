@@ -274,6 +274,7 @@
         let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], chatHistories = {}, pendingMessages = {}, currentChatUser = null, activeChats = {}, joinData = null;
         let updateTimeout = null;
         let lastLocationUpdate = 0;
+        let storedJoinData = localStorage.getItem('crystalMedJoinData') ? JSON.parse(localStorage.getItem('crystalMedJoinData')) : null;
 
         document.addEventListener('DOMContentLoaded', () => {
             loadChats();
@@ -290,12 +291,19 @@
             localStorage.setItem('crystalMedChats', JSON.stringify(chatHistories));
         }
 
+        socket.on('connect', () => {
+            console.log('Socket connected');
+        });
+
         socket.on('userId', (id) => {
             userId = id;
+            console.log('Received userId:', userId);
         });
 
         socket.on('joinSuccess', () => {
+            console.log('Join success received');
             selfUser = joinData;
+            selfUser.id = userId;
             addSelfMarker();
             map.setView([selfUser.lat, selfUser.lng], 13);
             watchId = navigator.geolocation.watchPosition(position => {
@@ -306,17 +314,23 @@
                     socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
                     lastLocationUpdate = Date.now();
                 }
-            }, err => console.error(err), { enableHighAccuracy: true });
+            }, err => {
+                console.error('Location watch error:', err);
+                alert('Location update failed: ' + err.message);
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
             document.getElementById('end-session-btn').style.display = 'block';
             document.querySelector('.join-btn').style.display = 'none';
+            localStorage.setItem('crystalMedJoinData', JSON.stringify({ type: selfUser.type, delivers: selfUser.delivers, price: selfUser.price, name: selfUser.name }));
         });
 
         socket.on('nameTaken', () => {
+            console.log('Name taken received');
             alert('Username is already taken. Please choose another.');
             openModal('joinModal');
         });
 
         socket.on('userUpdate', (updatedUsers) => {
+            console.log('User update received', updatedUsers);
             users = updatedUsers.filter(u => u.id !== userId); // Exclude self
             if (updateTimeout) clearTimeout(updateTimeout);
             updateTimeout = setTimeout(applyFilters, 300);
@@ -396,6 +410,22 @@
             L.control.zoom({ position: 'bottomleft' }).addTo(map);
             applyFilters(); // Use socket users, no mocks
             document.getElementById('loading-message').style.display = 'none'; // Hide loading message
+            autoJoinIfStored();
+        }
+
+        function autoJoinIfStored() {
+            if (storedJoinData && !selfUser) {
+                if (confirm(`Rejoin as ${storedJoinData.name} (${storedJoinData.type})?`)) {
+                    document.getElementById('username').value = storedJoinData.name;
+                    document.querySelector(`input[name="userType"][value="${storedJoinData.type}"]`).checked = true;
+                    if (storedJoinData.type === 'Seller') {
+                        document.getElementById('delivers').checked = storedJoinData.delivers;
+                        document.getElementById('price').value = storedJoinData.price || '';
+                        document.getElementById('sellerOptions').style.display = 'block';
+                    }
+                    confirmJoin();
+                }
+            }
         }
 
         // Add markers to map for other users
@@ -412,7 +442,7 @@
                 let marker;
                 if (user.type === 'Buyer' && showBuyers && (user.price === null || (user.price >= minPrice && user.price <= maxPrice))) {
                     marker = L.circleMarker([user.lat, user.lng], {
-                        radius: 10,
+                        radius: 10;
                         fillColor: 'orange',
                         color: 'orange',
                         weight: 1,
@@ -503,17 +533,18 @@
                 delivers: delivers,
                 price: price,
                 name: username,
-                img: 'https://via.placeholder.com/100?text=You',
-                id: userId // Assign server userId for self check
+                img: 'https://via.placeholder.com/100?text=You'
             };
             closeModal('joinModal');
             navigator.geolocation.getCurrentPosition(position => {
                 joinData.lat = position.coords.latitude;
                 joinData.lng = position.coords.longitude;
+                console.log('Sending join with data:', joinData);
                 socket.emit('join', joinData);
             }, err => {
-                alert('Unable to get location.');
-            });
+                console.error('Geolocation error:', err);
+                alert('Unable to get location: ' + err.message + '. Please allow location access.');
+            }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
         }
 
         // Add/update self marker
@@ -524,7 +555,10 @@
             const minPrice = parseFloat(document.getElementById('minPrice')?.value) || 0;
             const maxPrice = parseFloat(document.getElementById('maxPrice')?.value) || Infinity;
             const shouldShow = (selfUser.type === 'Buyer' && showBuyers) || (selfUser.type === 'Seller' && showSellers);
-            if (!shouldShow || (selfUser.price !== null && (selfUser.price < minPrice || selfUser.price > maxPrice))) return;
+            if (!shouldShow || (selfUser.price !== null && (selfUser.price < minPrice || selfUser.price > maxPrice))) {
+                console.log('Self marker hidden by filters');
+                return;
+            }
 
             const color = selfUser.type === 'Buyer' ? 'yellow' : 'red';
             const starHtml = `
@@ -547,6 +581,7 @@
             marker.bindTooltip(selfUser.name, { permanent: true, direction: 'bottom', offset: [0, 20] });
             marker.on('click', () => showProfile(selfUser));
             selfMarker = marker;
+            console.log('Self marker added at', selfUser.lat, selfUser.lng);
         }
 
         // Show profile modal
@@ -625,6 +660,7 @@
             Object.values(activeChats).forEach(chatUser => {
                 socket.emit('chatMessage', { to: chatUser.id, message: `${selfUser.name} has disconnected.` });
             });
+            socket.emit('disconnectUser');
             socket.disconnect();
             selfUser = null;
             if (selfMarker) map.removeLayer(selfMarker);
@@ -637,6 +673,8 @@
             activeChats = {};
             saveChats();
             document.getElementById('chat-buttons').innerHTML = '';
+            localStorage.removeItem('crystalMedJoinData');
+            storedJoinData = null;
             closeModal('endSessionModal');
         }
 
@@ -646,11 +684,14 @@
                 const { latitude, longitude } = position.coords;
                 currentLocation = { lat: latitude, lng: longitude };
                 initMap(latitude, longitude);
-            }, () => {
+            }, (err) => {
+                console.error('Initial geolocation error:', err);
+                alert('Unable to get initial location: ' + err.message + '. Using default location.');
                 currentLocation = { lat: 37.7749, lng: -122.4194 };
                 initMap();
-            });
+            }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
         } else {
+            alert('Geolocation not supported by your browser.');
             currentLocation = { lat: 37.7749, lng: -122.4194 };
             initMap();
         }
