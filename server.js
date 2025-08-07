@@ -36,8 +36,6 @@ io.on('connection', (socket) => {
     const targetSocket = activeUsers[targetId]?.socketId;
     if (targetSocket) {
       io.to(targetSocket).emit('chatRequest', { from: userId });
-      // Here, you would handle WebRTC offer/answer exchange for P2P.
-      // For simplicity, this example uses Socket.io for chat messaging; expand to WebRTC for true P2P.
     }
   });
 
