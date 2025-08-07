@@ -126,6 +126,9 @@
             border: none;
             padding: 2px 5px;
             font-size: 12px;
+            white-space: nowrap;
+            text-align: center;
+            transform: translateX(-50%);
         }
         #notification {
             position: fixed;
@@ -178,6 +181,11 @@
             font-size: 20px;
             color: #00ff00;
         }
+        @media (max-width: 768px) {
+            .leaflet-tooltip {
+                font-size: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -188,6 +196,7 @@
     </div>
     <button class="filters-btn" onclick="openModal('filtersModal')">Filters</button>
     <button class="join-btn" onclick="joinMap()">Appear on Map</button>
+    <button id="end-session-btn" style="position: absolute; top: 60px; left: 150px; z-index: 1000; background: red; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 5px; display: none;" onclick="openEndSessionModal()">End Session</button>
 
     <!-- Profile Modal -->
     <div id="profileModal" class="modal">
@@ -246,27 +255,77 @@
         </div>
     </div>
 
+    <!-- End Session Modal -->
+    <div id="endSessionModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('endSessionModal')">&times;</span>
+            <h2>End Session</h2>
+            <p>All data linked to your session will be erased from the server and the chats cannot be retrieved. Are you sure you want to proceed?</p>
+            <button onclick="confirmEndSession()">Confirm</button>
+        </div>
+    </div>
+
     <div id="notification" onclick="handleNotificationClick()"></div>
     <div id="chat-buttons"></div>
 
     <script>
         const socket = io(); // Connect to backend
 
-        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], chatHistories = {}, pendingMessages = {}, currentChatUser = null, activeChats = {};
+        let map, currentLocation, markers = [], selfUser = null, selfMarker = null, watchId = null, userId = null, users = [], chatHistories = {}, pendingMessages = {}, currentChatUser = null, activeChats = {}, joinData = null;
+        let updateTimeout = null;
+        let lastLocationUpdate = 0;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadChats();
+        });
+
+        function loadChats() {
+            const storedChats = localStorage.getItem('crystalMedChats');
+            if (storedChats) {
+                chatHistories = JSON.parse(storedChats);
+            }
+        }
+
+        function saveChats() {
+            localStorage.setItem('crystalMedChats', JSON.stringify(chatHistories));
+        }
 
         socket.on('userId', (id) => {
             userId = id;
         });
 
+        socket.on('joinSuccess', () => {
+            selfUser = joinData;
+            addSelfMarker();
+            map.setView([selfUser.lat, selfUser.lng], 13);
+            watchId = navigator.geolocation.watchPosition(position => {
+                selfUser.lat = position.coords.latitude;
+                selfUser.lng = position.coords.longitude;
+                addSelfMarker();
+                if (Date.now() - lastLocationUpdate > 5000) {
+                    socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
+                    lastLocationUpdate = Date.now();
+                }
+            }, err => console.error(err), { enableHighAccuracy: true });
+            document.getElementById('end-session-btn').style.display = 'block';
+            document.querySelector('.join-btn').style.display = 'none';
+        });
+
+        socket.on('nameTaken', () => {
+            alert('Username is already taken. Please choose another.');
+            openModal('joinModal');
+        });
+
         socket.on('userUpdate', (updatedUsers) => {
             users = updatedUsers.filter(u => u.id !== userId); // Exclude self
-            applyFilters();
+            if (updateTimeout) clearTimeout(updateTimeout);
+            updateTimeout = setTimeout(applyFilters, 300);
         });
 
         socket.on('chatRequest', ({ from }) => {
             const sender = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
-            if (!activeChats[from]) {
-                activeChats[from] = sender;
+            if (!activeChats[sender.name]) {
+                activeChats[sender.name] = sender;
                 addChatButton(sender);
             }
             showNotification(`New chat from ${sender.name}`);
@@ -275,19 +334,20 @@
         socket.on('chatMessage', ({ from, message }) => {
             const sender = users.find(u => u.id === from) || { id: from, name: `User ${from.slice(0,4)}` };
             const msgText = `${sender.name}: ${message}`;
-            if (!chatHistories[from]) chatHistories[from] = [];
-            chatHistories[from].push(msgText);
-            if (!activeChats[from]) {
-                activeChats[from] = sender;
+            if (!chatHistories[sender.name]) chatHistories[sender.name] = [];
+            chatHistories[sender.name].push(msgText);
+            saveChats();
+            if (!activeChats[sender.name]) {
+                activeChats[sender.name] = sender;
                 addChatButton(sender);
             }
-            if (currentChatUser && currentChatUser.id === from && document.getElementById('chatModal').style.display === 'block') {
+            if (currentChatUser && currentChatUser.name === sender.name && document.getElementById('chatModal').style.display === 'block') {
                 const msgDiv = document.createElement('div');
                 msgDiv.textContent = msgText;
                 document.getElementById('chatMessages').appendChild(msgDiv);
             } else {
-                if (!pendingMessages[from]) pendingMessages[from] = [];
-                pendingMessages[from].push(msgText);
+                if (!pendingMessages[sender.name]) pendingMessages[sender.name] = [];
+                pendingMessages[sender.name].push(msgText);
                 showNotification(`New message from ${sender.name}`);
             }
         });
@@ -315,8 +375,8 @@
             const notification = document.getElementById('notification');
             notification.style.display = 'none';
             if (Object.keys(pendingMessages).length > 0) {
-                const from = Object.keys(pendingMessages)[0];
-                currentChatUser = activeChats[from];
+                const name = Object.keys(pendingMessages)[0];
+                currentChatUser = activeChats[name];
                 openChat();
             }
         }
@@ -438,27 +498,19 @@
                 delivers = document.getElementById('delivers').checked;
                 price = parseFloat(document.getElementById('price').value) || null;
             }
+            joinData = {
+                type: type,
+                delivers: delivers,
+                price: price,
+                name: username,
+                img: 'https://via.placeholder.com/100?text=You',
+                id: userId // Assign server userId for self check
+            };
             closeModal('joinModal');
             navigator.geolocation.getCurrentPosition(position => {
-                selfUser = {
-                    type: type,
-                    delivers: delivers,
-                    price: price,
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    img: 'https://via.placeholder.com/100?text=You',
-                    name: username,
-                    id: userId  // Assign server userId for self check
-                };
-                socket.emit('join', selfUser);
-                addSelfMarker();
-                map.setView([selfUser.lat, selfUser.lng], 13);
-                watchId = navigator.geolocation.watchPosition(position => {
-                    selfUser.lat = position.coords.latitude;
-                    selfUser.lng = position.coords.longitude;
-                    socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
-                    addSelfMarker();
-                }, err => console.error(err), { enableHighAccuracy: true });
+                joinData.lat = position.coords.latitude;
+                joinData.lng = position.coords.longitude;
+                socket.emit('join', joinData);
             }, err => {
                 alert('Unable to get location.');
             });
@@ -520,19 +572,19 @@
             closeModal('profileModal');
             document.getElementById('chatName').textContent = currentChatUser.name;
             document.getElementById('chatMessages').innerHTML = '';
-            const history = chatHistories[currentChatUser.id] || [];
+            const history = chatHistories[currentChatUser.name] || [];
             history.forEach(msg => {
                 const msgDiv = document.createElement('div');
                 msgDiv.textContent = msg;
                 document.getElementById('chatMessages').appendChild(msgDiv);
             });
-            if (pendingMessages[currentChatUser.id]) {
-                pendingMessages[currentChatUser.id].forEach(msg => {
+            if (pendingMessages[currentChatUser.name]) {
+                pendingMessages[currentChatUser.name].forEach(msg => {
                     const msgDiv = document.createElement('div');
                     msgDiv.textContent = msg;
                     document.getElementById('chatMessages').appendChild(msgDiv);
                 });
-                delete pendingMessages[currentChatUser.id];
+                delete pendingMessages[currentChatUser.name];
             }
             openModal('chatModal');
             socket.emit('startChat', currentChatUser.id);
@@ -544,8 +596,9 @@
                 const message = input.value;
                 if (message) {
                     const msgText = `You: ${message}`;
-                    if (!chatHistories[currentChatUser.id]) chatHistories[currentChatUser.id] = [];
-                    chatHistories[currentChatUser.id].push(msgText);
+                    if (!chatHistories[currentChatUser.name]) chatHistories[currentChatUser.name] = [];
+                    chatHistories[currentChatUser.name].push(msgText);
+                    saveChats();
                     const msgDiv = document.createElement('div');
                     msgDiv.textContent = msgText;
                     document.getElementById('chatMessages').appendChild(msgDiv);
@@ -562,6 +615,29 @@
 
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
+        }
+
+        function openEndSessionModal() {
+            openModal('endSessionModal');
+        }
+
+        function confirmEndSession() {
+            Object.values(activeChats).forEach(chatUser => {
+                socket.emit('chatMessage', { to: chatUser.id, message: `${selfUser.name} has disconnected.` });
+            });
+            socket.disconnect();
+            selfUser = null;
+            if (selfMarker) map.removeLayer(selfMarker);
+            selfMarker = null;
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            document.getElementById('end-session-btn').style.display = 'none';
+            document.querySelector('.join-btn').style.display = 'block';
+            chatHistories = {};
+            pendingMessages = {};
+            activeChats = {};
+            saveChats();
+            document.getElementById('chat-buttons').innerHTML = '';
+            closeModal('endSessionModal');
         }
 
         // Get user location and init
