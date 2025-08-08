@@ -330,7 +330,10 @@
             console.log('User update received', updatedUsers);
             users = updatedUsers.filter(u => u.id !== userId); // Exclude self
             if (updateTimeout) clearTimeout(updateTimeout);
-            updateTimeout = setTimeout(applyFilters, 300);
+            updateTimeout = setTimeout(() => {
+                applyFilters();
+                rebuildChatButtons();
+            }, 300);
         });
 
         socket.on('chatRequest', ({ from }) => {
@@ -373,6 +376,18 @@
                 openChat();
             };
             chatButtons.appendChild(button);
+        }
+
+        function rebuildChatButtons() {
+            const chatButtons = document.getElementById('chat-buttons');
+            chatButtons.innerHTML = '';
+            activeChats = {};
+            users.forEach(user => {
+                if (chatHistories[user.name]) {
+                    activeChats[user.name] = user;
+                    addChatButton(user);
+                }
+            });
         }
 
         function showNotification(text) {
