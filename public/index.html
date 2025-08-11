@@ -314,7 +314,7 @@
                     socket.emit('updateLocation', { lat: selfUser.lat, lng: selfUser.lng });
                     lastLocationUpdate = Date.now();
                 }
-            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
+            }, geoError, { enableHighAccuracy: true, timeout: 30000, maximumAge: 30000 });
             document.getElementById('end-session-btn').style.display = 'block';
             document.querySelector('.join-btn').style.display = 'none';
             localStorage.setItem('crystalMedJoinData', JSON.stringify({ type: selfUser.type, delivers: selfUser.delivers, price: selfUser.price, name: selfUser.name }));
@@ -532,6 +532,22 @@
             alert(message);
         }
 
+        function getLocation(successCb, errorCb, options) {
+            if ('permissions' in navigator) {
+                navigator.permissions.query({ name: 'geolocation' }).then(perm => {
+                    if (perm.state === 'denied') {
+                        geoError({ code: 1, message: 'Permission denied' });
+                    } else {
+                        navigator.geolocation.getCurrentPosition(successCb, errorCb, options);
+                    }
+                }).catch(() => {
+                    navigator.geolocation.getCurrentPosition(successCb, errorCb, options);
+                });
+            } else {
+                navigator.geolocation.getCurrentPosition(successCb, errorCb, options);
+            }
+        }
+
         // Join map functionality
         function joinMap() {
             if (selfUser) {
@@ -568,12 +584,12 @@
                 img: 'https://via.placeholder.com/100?text=You'
             };
             closeModal('joinModal');
-            navigator.geolocation.getCurrentPosition(position => {
+            getLocation(position => {
                 joinData.lat = position.coords.latitude;
                 joinData.lng = position.coords.longitude;
                 console.log('Sending join with data:', joinData);
                 socket.emit('join', joinData);
-            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
+            }, geoError, { enableHighAccuracy: true, timeout: 30000, maximumAge: 30000 });
         }
 
         // Add/update self marker
@@ -710,11 +726,11 @@
             currentLocation = { lat: 37.7749, lng: -122.4194 };
             initMap();
         } else {
-            navigator.geolocation.getCurrentPosition(position => {
+            getLocation(position => {
                 const { latitude, longitude } = position.coords;
                 currentLocation = { lat: latitude, lng: longitude };
                 initMap(latitude, longitude);
-            }, geoError, { enableHighAccuracy: false, timeout: 15000, maximumAge: 30000 });
+            }, geoError, { enableHighAccuracy: true, timeout: 30000, maximumAge: 30000 });
         }
 
         // Setup seller options visibility
